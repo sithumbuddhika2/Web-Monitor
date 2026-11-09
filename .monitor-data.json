@@ -1,0 +1,44 @@
+{
+  "targetUrl": "https://hc.lk",
+  "currentStatus": "down",
+  "statusSince": "2026-11-09T04:37:48.659Z",
+  "lastCheck": {
+    "url": "https://hc.lk",
+    "timestamp": "2026-11-09T04:37:48.783Z",
+    "status": "down",
+    "httpStatus": null,
+    "responseTimeMs": 0,
+    "error": "During prerendering, fetch() rejects when the prerender is complete. Typically these errors are handled by React but if you move fetch() to a different context by using `setTimeout`, `after`, or similar functions you may observe this error and you should handle it in that context. This occurred at route \"/api/cron/uptime\"."
+  },
+  "lastDowntimeAlertAt": null,
+  "lastRecoveryAlertAt": null,
+  "recentChecks": [
+    {
+      "url": "https://hc.lk",
+      "timestamp": "2026-11-09T04:37:48.783Z",
+      "status": "down",
+      "httpStatus": null,
+      "responseTimeMs": 0,
+      "error": "During prerendering, fetch() rejects when the prerender is complete. Typically these errors are handled by React but if you move fetch() to a different context by using `setTimeout`, `after`, or similar functions you may observe this error and you should handle it in that context. This occurred at route \"/api/cron/uptime\"."
+    },
+    {
+      "url": "https://hc.lk",
+      "timestamp": "2026-11-09T04:37:48.659Z",
+      "status": "down",
+      "httpStatus": null,
+      "responseTimeMs": 2,
+      "error": "During prerendering, fetch() rejects when the prerender is complete. Typically these errors are handled by React but if you move fetch() to a different context by using `setTimeout`, `after`, or similar functions you may observe this error and you should handle it in that context. This occurred at route \"/api/cron/uptime\"."
+    }
+  ],
+  "incidents": [
+    {
+      "id": "inc_1794199068660",
+      "target": "https://hc.lk",
+      "startedAt": "2026-11-09T04:37:48.659Z",
+      "reason": "During prerendering, fetch() rejects when the prerender is complete. Typically these errors are handled by React but if you move fetch() to a different context by using `setTimeout`, `after`, or similar functions you may observe this error and you should handle it in that context. This occurred at route \"/api/cron/uptime\".",
+      "httpStatus": null,
+      "notified": true
+    }
+  ],
+  "errors": []
+}
