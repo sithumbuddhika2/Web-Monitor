@@ -1,8 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { HealthCheckResult, IncidentRecord, ErrorReport, MonitorState, SystemStatus } from './types';
+import os from 'os';
+import { HealthCheckResult, IncidentRecord, ErrorReport, MonitorState, SystemStatus, AlertAction } from './types';
 
-const DATA_FILE = path.join(process.cwd(), '.monitor-data.json');
+// Use os.tmpdir() so it works reliably in local dev AND on Vercel AWS Lambda (/tmp is writable)
+const DATA_FILE = path.join(os.tmpdir(), 'sentinel-monitor-state.json');
 
 // Global memory state for Node.js process / serverless instance
 let memoryState: MonitorState = {
@@ -10,6 +12,8 @@ let memoryState: MonitorState = {
   currentStatus: 'unknown',
   statusSince: new Date().toISOString(),
   lastCheck: null,
+  isCurrentlyDown: false,
+  downSince: null,
   lastDowntimeAlertAt: null,
   lastRecoveryAlertAt: null,
   recentChecks: [],
@@ -38,10 +42,9 @@ function loadStateFromFile(): void {
 
 function persistStateToFile(): void {
   try {
-    // Only attempt file write if filesystem is available (local dev or environments with writable disk)
     fs.writeFileSync(DATA_FILE, JSON.stringify(memoryState, null, 2), 'utf-8');
-  } catch {
-    // In strict read-only serverless environments, file persistence will gracefully fail
+  } catch (err) {
+    console.warn('[STORE] Could not write state file:', err);
   }
 }
 
@@ -49,10 +52,24 @@ function persistStateToFile(): void {
 loadStateFromFile();
 
 export function getMonitorState(): MonitorState {
+  loadStateFromFile(); // Refresh from disk if available
   return memoryState;
 }
 
-export function recordHealthCheck(result: HealthCheckResult): { statusChanged: boolean; previousStatus: SystemStatus; activeIncident?: IncidentRecord } {
+/**
+ * Evaluates the new health check and enforces strict anti-spam rules:
+ * 1. Initial Outage: Dispatches 1 email when target first goes DOWN.
+ * 2. Ongoing Outage: Suppresses repeated emails. Dispatches a reminder ONLY after 2 hours (120 mins).
+ * 3. Recovery: Dispatches 1 email when target comes BACK ONLINE.
+ * 4. Steady State: Zero emails.
+ */
+export function recordHealthCheck(result: HealthCheckResult): {
+  alertAction: AlertAction;
+  previousStatus: SystemStatus;
+  activeIncident?: IncidentRecord;
+} {
+  loadStateFromFile();
+
   const previousStatus = memoryState.currentStatus;
   const statusChanged = previousStatus !== result.status && previousStatus !== 'unknown';
   
@@ -63,45 +80,107 @@ export function recordHealthCheck(result: HealthCheckResult): { statusChanged: b
     memoryState.statusSince = result.timestamp;
   }
 
-  // Keep last 30 checks for latency and graph
+  // Keep last 30 checks for latency chart
   memoryState.recentChecks = [result, ...memoryState.recentChecks.slice(0, 29)];
 
+  let alertAction: AlertAction = { type: 'NONE' };
   let activeIncident: IncidentRecord | undefined;
 
-  // Handle Outage lifecycle
+  // Two hours cooldown in milliseconds (2 * 60 * 60 * 1000 = 7,200,000 ms)
+  const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+
   if (result.status === 'down') {
-    // If not already in an active incident, create one
-    const ongoing = memoryState.incidents.find(i => !i.resolvedAt);
-    if (!ongoing) {
+    // 1. Initial Outage Detection
+    if (!memoryState.isCurrentlyDown) {
+      memoryState.isCurrentlyDown = true;
+      memoryState.downSince = result.timestamp;
+      memoryState.lastDowntimeAlertAt = result.timestamp;
+
+      alertAction = {
+        type: 'INITIAL_DOWN',
+        reason: result.error || `HTTP ${result.httpStatus || 'unreachable'}`,
+        httpStatus: result.httpStatus,
+      };
+
       const newIncident: IncidentRecord = {
         id: `inc_${Date.now()}`,
         target: result.url,
         startedAt: result.timestamp,
-        reason: result.error || `HTTP Status ${result.httpStatus || 'unreachable'}`,
+        reason: result.error || `HTTP ${result.httpStatus || 'unreachable'}`,
         httpStatus: result.httpStatus,
-        notified: false,
+        notified: true,
       };
       memoryState.incidents = [newIncident, ...memoryState.incidents.slice(0, 49)];
       activeIncident = newIncident;
+    } 
+    // 2. Ongoing Outage (Already Down)
+    else {
+      const lastAlertMs = memoryState.lastDowntimeAlertAt
+        ? new Date(memoryState.lastDowntimeAlertAt).getTime()
+        : 0;
+      const elapsedSinceAlertMs = Date.now() - lastAlertMs;
+
+      // Has it been at least 2 hours since the last alert was sent?
+      if (elapsedSinceAlertMs >= TWO_HOURS_MS) {
+        const downStartMs = memoryState.downSince
+          ? new Date(memoryState.downSince).getTime()
+          : Date.now() - elapsedSinceAlertMs;
+        const hoursDown = Math.max(2, Math.round((Date.now() - downStartMs) / (3600 * 1000)));
+
+        alertAction = {
+          type: 'REMINDER_DOWN',
+          reason: result.error || `HTTP ${result.httpStatus || 'unreachable'}`,
+          httpStatus: result.httpStatus,
+          hoursDown,
+        };
+        memoryState.lastDowntimeAlertAt = result.timestamp;
+      } else {
+        // Still down, but within 2 hours: SUPPRESS ALL EMAILS
+        alertAction = { type: 'NONE' };
+      }
     }
-  } else if (result.status === 'operational' && previousStatus === 'down') {
-    // Recovered! Mark active incident as resolved
-    const ongoingIndex = memoryState.incidents.findIndex(i => !i.resolvedAt);
-    if (ongoingIndex !== -1) {
-      const ongoing = memoryState.incidents[ongoingIndex];
-      const startMs = new Date(ongoing.startedAt).getTime();
-      const endMs = new Date(result.timestamp).getTime();
-      ongoing.resolvedAt = result.timestamp;
-      ongoing.durationSeconds = Math.max(1, Math.round((endMs - startMs) / 1000));
-      activeIncident = ongoing;
+  } 
+  // 3. Service Restored (Back Online)
+  else if (result.status === 'operational') {
+    if (memoryState.isCurrentlyDown) {
+      const downStartMs = memoryState.downSince
+        ? new Date(memoryState.downSince).getTime()
+        : Date.now();
+      const durationSeconds = Math.max(1, Math.round((Date.now() - downStartMs) / 1000));
+
+      alertAction = {
+        type: 'RECOVERED',
+        durationSeconds,
+        responseTimeMs: result.responseTimeMs,
+      };
+
+      // Reset downtime flags
+      memoryState.isCurrentlyDown = false;
+      memoryState.downSince = null;
+      memoryState.lastDowntimeAlertAt = null;
+      memoryState.lastRecoveryAlertAt = result.timestamp;
+
+      // Mark incident resolved
+      const ongoingIndex = memoryState.incidents.findIndex(i => !i.resolvedAt);
+      if (ongoingIndex !== -1) {
+        const ongoing = memoryState.incidents[ongoingIndex];
+        ongoing.resolvedAt = result.timestamp;
+        ongoing.durationSeconds = durationSeconds;
+        activeIncident = ongoing;
+      }
+    } else {
+      // Already operational, zero emails
+      alertAction = { type: 'NONE' };
     }
   }
 
   persistStateToFile();
-  return { statusChanged, previousStatus, activeIncident };
+  return { alertAction, previousStatus, activeIncident };
 }
 
 export function recordErrorReport(report: Omit<ErrorReport, 'id' | 'notified'>): { error: ErrorReport; shouldSendEmail: boolean } {
+  loadStateFromFile();
+
   const id = `err_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   
   // Create fingerprint to prevent spamming duplicate errors (same message, file, line)

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connection } from 'next/server';
 import { getMonitorState, recordHealthCheck } from '@/lib/store';
-import { sendDowntimeAlert, sendRecoveryAlert } from '@/lib/mailer';
+import { sendDowntimeAlert, sendDowntimeReminderAlert, sendRecoveryAlert } from '@/lib/mailer';
 import { HealthCheckResult, SystemStatus } from '@/lib/types';
 
 
@@ -62,24 +62,27 @@ export async function GET() {
   await connection();
   const state = getMonitorState();
   const result = await checkTarget(state.targetUrl);
-  const { statusChanged, previousStatus, activeIncident } = recordHealthCheck(result);
+  const { alertAction, previousStatus, activeIncident } = recordHealthCheck(result);
 
   let emailDispatched = false;
 
-  // If transitioned to DOWN, send downtime alert
-  if (result.status === 'down' && (statusChanged || !activeIncident?.notified)) {
+  if (alertAction.type === 'INITIAL_DOWN') {
     try {
-      await sendDowntimeAlert(result.url, result.error || 'Server unreachable', result.httpStatus);
-      if (activeIncident) activeIncident.notified = true;
+      await sendDowntimeAlert(result.url, alertAction.reason, alertAction.httpStatus);
       emailDispatched = true;
     } catch (e) {
-      console.error('[CHECK API] Error sending downtime alert:', e);
+      console.error('[CHECK API] Error sending initial downtime alert:', e);
     }
-  } 
-  // If transitioned from DOWN back to OPERATIONAL, send recovery alert
-  else if (result.status === 'operational' && previousStatus === 'down') {
+  } else if (alertAction.type === 'REMINDER_DOWN') {
     try {
-      await sendRecoveryAlert(result.url, activeIncident?.durationSeconds, result.responseTimeMs);
+      await sendDowntimeReminderAlert(result.url, alertAction.reason, alertAction.httpStatus, alertAction.hoursDown);
+      emailDispatched = true;
+    } catch (e) {
+      console.error('[CHECK API] Error sending reminder downtime alert:', e);
+    }
+  } else if (alertAction.type === 'RECOVERED') {
+    try {
+      await sendRecoveryAlert(result.url, alertAction.durationSeconds, alertAction.responseTimeMs);
       emailDispatched = true;
     } catch (e) {
       console.error('[CHECK API] Error sending recovery alert:', e);
@@ -89,7 +92,7 @@ export async function GET() {
   return NextResponse.json({
     success: true,
     result,
-    statusChanged,
+    alertAction: alertAction.type,
     emailDispatched,
   });
 }

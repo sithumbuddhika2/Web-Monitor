@@ -41,9 +41,17 @@ export interface MonitorState {
   lastCheck: HealthCheckResult | null;
   currentStatus: SystemStatus;
   statusSince: string;
+  isCurrentlyDown: boolean;
+  downSince: string | null;
   lastDowntimeAlertAt: string | null;
   lastRecoveryAlertAt: string | null;
   recentChecks: HealthCheckResult[];
   incidents: IncidentRecord[];
   errors: ErrorReport[];
 }
+
+export type AlertAction = 
+  | { type: 'INITIAL_DOWN'; reason: string; httpStatus: number | null }
+  | { type: 'REMINDER_DOWN'; reason: string; httpStatus: number | null; hoursDown: number }
+  | { type: 'RECOVERED'; durationSeconds: number; responseTimeMs: number }
+  | { type: 'NONE' };

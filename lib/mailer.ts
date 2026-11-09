@@ -116,6 +116,56 @@ export async function sendDowntimeAlert(targetUrl: string, reason: string, httpS
 }
 
 /**
+ * ⏳ Alert: Still Down Reminder (sent every 2-3 hours only)
+ */
+export async function sendDowntimeReminderAlert(targetUrl: string, reason: string, httpStatus: number | null, hoursDown: number) {
+  const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
+  const subject = `⏳ [STILL DOWN - ${hoursDown}h REMINDER] ${targetUrl} is still unreachable`;
+  
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 8px; border: 1px solid #fed7aa; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+      <div style="background: #ea580c; color: #ffffff; padding: 24px; text-align: center;">
+        <span style="background: rgba(0,0,0,0.2); font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 3px 8px; border-radius: 4px;">Periodic Reminder</span>
+        <h1 style="margin: 8px 0 0; font-size: 20px; font-weight: 700; letter-spacing: -0.5px;">⏳ Ongoing Service Outage</h1>
+        <p style="margin: 8px 0 0; font-size: 13px; opacity: 0.9;">Target service has remained unresponsive for approximately <strong>${hoursDown} hours</strong>.</p>
+      </div>
+      <div style="padding: 24px; color: #1f2937;">
+        <p style="font-size: 13px; color: #4b5563; line-height: 1.5; margin-top: 0;">
+          This is an automated 2-hour interval reminder. Further alerts will stay suppressed until service is restored or the next 2-hour window.
+        </p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 20px;">
+          <tr>
+            <td style="padding: 10px 0; color: #6b7280; font-size: 14px; width: 140px; border-bottom: 1px solid #f3f4f6;">Target URL:</td>
+            <td style="padding: 10px 0; font-weight: 600; font-size: 14px; border-bottom: 1px solid #f3f4f6;"><a href="${targetUrl}" style="color: #ea580c; text-decoration: none;">${targetUrl}</a></td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 0; color: #6b7280; font-size: 14px; border-bottom: 1px solid #f3f4f6;">Status:</td>
+            <td style="padding: 10px 0; font-size: 14px; border-bottom: 1px solid #f3f4f6;"><span style="background: #ffedd5; color: #9a3412; padding: 3px 8px; border-radius: 4px; font-weight: 600;">CONTINUOUS OUTAGE (~${hoursDown}h)</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 0; color: #6b7280; font-size: 14px; border-bottom: 1px solid #f3f4f6;">HTTP Status:</td>
+            <td style="padding: 10px 0; font-size: 14px; font-weight: 600; border-bottom: 1px solid #f3f4f6;">${httpStatus ? httpStatus : 'No HTTP response (Connection Failed)'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 0; color: #6b7280; font-size: 14px; border-bottom: 1px solid #f3f4f6;">Failure Reason:</td>
+            <td style="padding: 10px 0; font-size: 14px; color: #c2410c; border-bottom: 1px solid #f3f4f6;">${reason}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 0; color: #6b7280; font-size: 14px;">Reminder Time:</td>
+            <td style="padding: 10px 0; font-size: 14px; color: #374151;">${now} (SL Time)</td>
+          </tr>
+        </table>
+      </div>
+      <div style="background: #f9fafb; padding: 14px 24px; text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #f3f4f6;">
+        HC Sentinel Monitoring &bull; Anti-Spam Throttled Dispatcher
+      </div>
+    </div>
+  `;
+
+  return sendEmail({ subject, html });
+}
+
+/**
  * 🟢 Alert: Domain or Site Recovered Back Online
  */
 export async function sendRecoveryAlert(targetUrl: string, durationSeconds?: number, responseTimeMs?: number) {
