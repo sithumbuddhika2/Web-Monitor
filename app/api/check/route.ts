@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { connection } from 'next/server';
 import { getMonitorState, recordHealthCheck } from '@/lib/store';
 import { sendDowntimeAlert, sendRecoveryAlert } from '@/lib/mailer';
 import { HealthCheckResult, SystemStatus } from '@/lib/types';
@@ -58,6 +59,7 @@ export async function checkTarget(url: string): Promise<HealthCheckResult> {
 }
 
 export async function GET() {
+  await connection();
   const state = getMonitorState();
   const result = await checkTarget(state.targetUrl);
   const { statusChanged, previousStatus, activeIncident } = recordHealthCheck(result);

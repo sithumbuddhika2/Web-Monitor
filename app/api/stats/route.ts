@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, connection } from 'next/server';
 import { getMonitorState } from '@/lib/store';
 
-
 export async function GET() {
+  await connection();
   const state = getMonitorState();
   const apiKey = process.env.API_SECRET_KEY || 'kcm-sentinel-secret-2026';
   const alertRecipient = process.env.ALERT_TO_EMAIL || '';

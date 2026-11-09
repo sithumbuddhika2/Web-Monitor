@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, connection } from 'next/server';
 import { getMonitorState, recordHealthCheck } from '@/lib/store';
 import { sendDowntimeAlert, sendRecoveryAlert } from '@/lib/mailer';
 import { checkTarget } from '@/app/api/check/route';
 
 
 export async function GET(req: NextRequest) {
+  await connection();
   // Optional security check for Vercel CRON_SECRET if configured
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret) {
