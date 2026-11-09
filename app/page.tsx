@@ -100,13 +100,17 @@ export default function DashboardPage() {
     }
   };
 
-  const handleTestEmail = async () => {
+  const handleTestEmail = async (type: 'verification' | 'recovery' | 'downtime' = 'verification') => {
     setTestingEmail(true);
     try {
-      const res = await fetch('/api/test-alert', { method: 'POST' });
+      const res = await fetch('/api/test-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type }),
+      });
       const data = await res.json();
       if (data.success) {
-        showToast('Test alert email dispatched successfully! Check your inbox.');
+        showToast(type === 'recovery' ? 'Sample [Restored] email sent! Check inbox.' : 'Test alert email dispatched successfully! Check inbox.');
       } else {
         showToast(`Email alert failed: ${data.message}`);
       }
@@ -285,7 +289,7 @@ function kcm_report_error_to_sentinel($type, $message, $file, $line, $trace = ''
             </button>
 
             <button
-              onClick={handleTestEmail}
+              onClick={() => handleTestEmail('verification')}
               disabled={testingEmail}
               className="btn-3d px-3.5 py-2 text-xs sm:text-sm font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg flex items-center space-x-2 cursor-pointer active:scale-95"
               title="Send a verification test email"
@@ -413,13 +417,23 @@ function kcm_report_error_to_sentinel($type, $message, $file, $line, $trace = ''
               </div>
             </div>
 
-            <button
-              onClick={handleTestEmail}
-              disabled={testingEmail}
-              className="btn-3d w-full py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg cursor-pointer"
-            >
-              Test Notification
-            </button>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <button
+                onClick={() => handleTestEmail('verification')}
+                disabled={testingEmail}
+                className="btn-3d py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg cursor-pointer"
+              >
+                Test Alert
+              </button>
+              <button
+                onClick={() => handleTestEmail('recovery')}
+                disabled={testingEmail}
+                className="btn-3d py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg cursor-pointer"
+                title="Send a sample Service Restored email"
+              >
+                Test Restored
+              </button>
+            </div>
           </div>
 
           {/* BENTO 4: Outage Incidents */}

@@ -73,6 +73,14 @@ export function recordHealthCheck(result: HealthCheckResult): {
   const previousStatus = memoryState.currentStatus;
   const statusChanged = previousStatus !== result.status && previousStatus !== 'unknown';
   
+  // Track if system was in a confirmed DOWN state previously
+  const wasDown = memoryState.isCurrentlyDown ||
+    memoryState.currentStatus === 'down' ||
+    previousStatus === 'down' ||
+    (memoryState.lastCheck && memoryState.lastCheck.status === 'down') ||
+    (memoryState.recentChecks.length > 0 && memoryState.recentChecks[0].status === 'down') ||
+    memoryState.incidents.some(i => !i.resolvedAt);
+
   memoryState.lastCheck = result;
   
   if (statusChanged || memoryState.currentStatus === 'unknown') {
@@ -91,7 +99,7 @@ export function recordHealthCheck(result: HealthCheckResult): {
 
   if (result.status === 'down') {
     // 1. Initial Outage Detection
-    if (!memoryState.isCurrentlyDown) {
+    if (!wasDown) {
       memoryState.isCurrentlyDown = true;
       memoryState.downSince = result.timestamp;
       memoryState.lastDowntimeAlertAt = result.timestamp;
@@ -115,13 +123,17 @@ export function recordHealthCheck(result: HealthCheckResult): {
     } 
     // 2. Ongoing Outage (Already Down)
     else {
+      // Ensure flags reflect ongoing outage
+      memoryState.isCurrentlyDown = true;
+      if (!memoryState.downSince) memoryState.downSince = result.timestamp;
+
       const lastAlertMs = memoryState.lastDowntimeAlertAt
         ? new Date(memoryState.lastDowntimeAlertAt).getTime()
         : 0;
       const elapsedSinceAlertMs = Date.now() - lastAlertMs;
 
       // Has it been at least 2 hours since the last alert was sent?
-      if (elapsedSinceAlertMs >= TWO_HOURS_MS) {
+      if (lastAlertMs > 0 && elapsedSinceAlertMs >= TWO_HOURS_MS) {
         const downStartMs = memoryState.downSince
           ? new Date(memoryState.downSince).getTime()
           : Date.now() - elapsedSinceAlertMs;
@@ -142,10 +154,10 @@ export function recordHealthCheck(result: HealthCheckResult): {
   } 
   // 3. Service Restored (Back Online)
   else if (result.status === 'operational') {
-    if (memoryState.isCurrentlyDown) {
+    if (wasDown) {
       const downStartMs = memoryState.downSince
         ? new Date(memoryState.downSince).getTime()
-        : Date.now();
+        : Date.now() - 60000; // default 1 min if missing
       const durationSeconds = Math.max(1, Math.round((Date.now() - downStartMs) / 1000));
 
       alertAction = {
@@ -160,10 +172,9 @@ export function recordHealthCheck(result: HealthCheckResult): {
       memoryState.lastDowntimeAlertAt = null;
       memoryState.lastRecoveryAlertAt = result.timestamp;
 
-      // Mark incident resolved
-      const ongoingIndex = memoryState.incidents.findIndex(i => !i.resolvedAt);
-      if (ongoingIndex !== -1) {
-        const ongoing = memoryState.incidents[ongoingIndex];
+      // Mark ongoing incident as resolved
+      const ongoing = memoryState.incidents.find(i => !i.resolvedAt);
+      if (ongoing) {
         ongoing.resolvedAt = result.timestamp;
         ongoing.durationSeconds = durationSeconds;
         activeIncident = ongoing;
@@ -210,5 +221,8 @@ export function recordErrorReport(report: Omit<ErrorReport, 'id' | 'notified'>):
 export function clearLogs(): void {
   memoryState.errors = [];
   memoryState.incidents = [];
+  memoryState.isCurrentlyDown = false;
+  memoryState.downSince = null;
+  memoryState.lastDowntimeAlertAt = null;
   persistStateToFile();
 }
