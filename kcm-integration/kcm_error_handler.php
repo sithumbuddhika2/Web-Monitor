@@ -19,7 +19,7 @@ if (!defined('SENTINEL_API_KEY')) {
 if (!defined('SENTINEL_ENDPOINT')) {
     // Replace this with your live Vercel URL once deployed, e.g.:
     // 'https://your-monitor.vercel.app/api/errors/report'
-    define('SENTINEL_ENDPOINT', getenv('SENTINEL_ENDPOINT') ?: 'https://hc-monitor.vercel.app/api/errors/report');
+    define('SENTINEL_ENDPOINT', getenv('SENTINEL_ENDPOINT') ?: 'https://webmonitor-eta.vercel.app/api/errors/report');
 }
 
 /**
